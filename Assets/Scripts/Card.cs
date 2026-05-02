@@ -2,10 +2,17 @@ using System.Collections.Generic;
 using UnityEngine;
 
 // Empty tag to test the hand.
-public class CardTest : MonoBehaviour
+public class Card : MonoBehaviour
 {
-    [SerializeField] CardScriptables card = null;
+    [SerializeField] public CardScriptables card = null;
 
+    private void Start()
+    {
+        SpriteRenderer spriteRenderer = GetComponent<SpriteRenderer>();
+        spriteRenderer.sprite = card.cardSprite;
+        CardClicking clicker = GetComponent<CardClicking>();
+        clicker.SetUp();
+    }
     [ContextMenu("DrawACard")]
     void DrawACard()
     {
@@ -14,5 +21,4 @@ public class CardTest : MonoBehaviour
         SpriteRenderer renderer = gameObject.GetComponent<SpriteRenderer>();
         renderer.sprite = sprite;
     }
-
 }

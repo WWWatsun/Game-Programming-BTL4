@@ -17,7 +17,7 @@ public class Hand : MonoBehaviour
         {
             //Destroy cards display only
             GameObject child = transform.GetChild(i).gameObject;
-            CardTest checker = child.GetComponent<CardTest>();
+            Card checker = child.GetComponent<Card>();
             if (checker != null)
             {
                 Destroy(transform.GetChild(i).gameObject);
@@ -36,14 +36,16 @@ public class Hand : MonoBehaviour
             //GameObject newCard = Instantiate(cardPrefab, cardPos, transform.rotation);
             GameObject newCard = Instantiate(cardPrefab, transform);
             newCard.transform.position = cardPos;
-            SpriteRenderer renderer = newCard.GetComponent<SpriteRenderer>();
-            renderer.sprite = card.cardSprite;
+            Card cardObj = newCard.GetComponent<Card>();
+            cardObj.card = card;
+            //SpriteRenderer renderer = newCard.GetComponent<SpriteRenderer>();
+            //renderer.sprite = card.cardSprite;
             offset += handSpacing;
         }
     }
 
     [ContextMenu("Draw A Card")]
-    void DrawACard()
+    public void DrawACard()
     {
         CardScriptables card = Deck.Instance.DrawCard();
         handList.Add(card);
@@ -51,7 +53,7 @@ public class Hand : MonoBehaviour
         Debug.Log($"Successfully Draw {card.CardName()}");
     }
 
-    void Discard(CardScriptables card)
+    public void Discard(CardScriptables card)
     {
         handList.Remove(card);
         Deck.Instance.GetDiscarded(card);

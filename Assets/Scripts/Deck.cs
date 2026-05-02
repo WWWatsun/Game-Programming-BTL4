@@ -47,6 +47,7 @@ public class Deck : MonoBehaviour
         {
             activeDeck.Clear();
             activeDeck.AddRange(discardPile);
+            discardPile.Clear();
             Shuffle();
         }
         int pos = activeDeck.Count - 1;
