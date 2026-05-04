@@ -11,12 +11,19 @@ public class CardClicking : MonoBehaviour, IPointerClickHandler
         card = GetComponent<Card>().card;
         hand = GetComponentInParent<Hand>();
     }
-    public void OnPointerClick(PointerEventData eventData)
+    public void OnPointerClick(PointerEventData eventData) // nhi code player thao tac choi uno
     {
         if (eventData.button == PointerEventData.InputButton.Left)
         {
-            hand.Discard(card);
-            Debug.Log($"Remove {card.CardName()}");
+            PlayerController player = hand.GetComponentInParent<PlayerController>();
+
+            if (player == null)
+            {
+                Debug.LogWarning("Cannot find PlayerController from this card.");
+                return;
+            }
+
+            player.RequestPlayCard(card);
         }
     }
 }

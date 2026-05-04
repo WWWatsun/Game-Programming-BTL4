@@ -8,41 +8,104 @@ public class Hand : MonoBehaviour
 {
     [SerializeField] List<CardScriptables> handList;
     [SerializeField] GameObject cardPrefab;
+    public IReadOnlyList<CardScriptables> Cards => handList; //nhi: UnoRuleEngine can biet player con bnhiu la de check rule “không được thắng bằng action card"
+
+    private void Start() //nhi: chinh cach các la bai duoc xep o initial position
+    {
+        HandDisplay();
+
+        PlayerController player = GetComponentInParent<PlayerController>();
+        if (player != null)
+        {
+            RefreshLegalVisuals(player);
+        }
+    }
 
     [ContextMenu("HandDisplay")]
-    void HandDisplay()
+    public void HandDisplay() //nhi: tao HandDisplay mới de la bai ko bi tran, UI dep hon
     {
-        //Clease the previous display
-        for (int i = transform.childCount - 1;  i >= 0; i--)
+        for (int i = transform.childCount - 1; i >= 0; i--)
         {
-            //Destroy cards display only
             GameObject child = transform.GetChild(i).gameObject;
             Card checker = child.GetComponent<Card>();
+
             if (checker != null)
             {
-                Destroy(transform.GetChild(i).gameObject);
+                Destroy(child);
             }
         }
 
-        //Offset initialization
-        float handSpacing = 2f;
+        float desiredSpacing = 2f;
+        float minSpacing = 0.8f;
+        float maxHandWidth = 12f;
+
         int count = handList.Count;
+
+        float handSpacing = desiredSpacing;
+
+        if (count > 1)
+        {
+            handSpacing = Mathf.Min(desiredSpacing, maxHandWidth / (count - 1));
+            handSpacing = Mathf.Max(handSpacing, minSpacing);
+        }
+
         float offset = -((count - 1) * handSpacing) / 2f;
 
+        int index = 0;
 
         foreach (CardScriptables card in handList)
         {
-            Vector3 cardPos = transform.position + new Vector3(offset, 0, 0);
-            //GameObject newCard = Instantiate(cardPrefab, cardPos, transform.rotation);
             GameObject newCard = Instantiate(cardPrefab, transform);
-            newCard.transform.position = cardPos;
+            newCard.transform.localPosition = new Vector3(offset, 0, 0);
+
             Card cardObj = newCard.GetComponent<Card>();
             cardObj.card = card;
-            //SpriteRenderer renderer = newCard.GetComponent<SpriteRenderer>();
-            //renderer.sprite = card.cardSprite;
+
+            SpriteRenderer sr = newCard.GetComponent<SpriteRenderer>();
+            if (sr != null)
+            {
+                sr.sortingOrder = index;
+            }
+
             offset += handSpacing;
+            index++;
         }
     }
+
+    // [ContextMenu("HandDisplay")]
+    // public void HandDisplay() // nhi sua thanh public cho UnoGameManager hoặc PlayerController goi
+    // {
+    //     //Clease the previous display
+    //     for (int i = transform.childCount - 1;  i >= 0; i--)
+    //     {
+    //         //Destroy cards display only
+    //         GameObject child = transform.GetChild(i).gameObject;
+    //         Card checker = child.GetComponent<Card>();
+    //         if (checker != null)
+    //         {
+    //             Destroy(transform.GetChild(i).gameObject);
+    //         }
+    //     }
+
+    //     //Offset initialization
+    //     float handSpacing = 2f;
+    //     int count = handList.Count;
+    //     float offset = -((count - 1) * handSpacing) / 2f;
+
+
+    //     foreach (CardScriptables card in handList)
+    //     {
+    //         Vector3 cardPos = transform.position + new Vector3(offset, 0, 0);
+    //         //GameObject newCard = Instantiate(cardPrefab, cardPos, transform.rotation);
+    //         GameObject newCard = Instantiate(cardPrefab, transform);
+    //         newCard.transform.position = cardPos;
+    //         Card cardObj = newCard.GetComponent<Card>();
+    //         cardObj.card = card;
+    //         //SpriteRenderer renderer = newCard.GetComponent<SpriteRenderer>();
+    //         //renderer.sprite = card.cardSprite;
+    //         offset += handSpacing;
+    //     }
+    // }
 
     [ContextMenu("Draw A Card")]
     public void DrawACard()
@@ -50,7 +113,59 @@ public class Hand : MonoBehaviour
         CardScriptables card = Deck.Instance.DrawCard();
         handList.Add(card);
         HandDisplay();
+
+        //nhi: sau khi draw card, refresh de hien legal/illegal move 
+        PlayerController player = GetComponentInParent<PlayerController>();
+        if (player != null)
+        {
+            RefreshLegalVisuals(player);
+        }
         Debug.Log($"Successfully Draw {card.CardName()}");
+    }
+
+    //nhi : khi la bai legal, UnoGameManager goi player.Hand.RemoveFromHandOnly(card); Deck.Instance.GetDiscarded(card);
+    public void RemoveFromHandOnly(CardScriptables card)
+    {
+        handList.Remove(card);
+
+        HandDisplay();
+
+        PlayerController player = GetComponentInParent<PlayerController>();
+        if (player != null)
+        {
+            RefreshLegalVisuals(player);
+        }
+
+        Debug.Log($"Remove from hand only {card.CardName()}");
+    }
+    //nhi: hightlight legal/ illegal card
+    public void RefreshLegalVisuals(PlayerController player)
+    {
+        if (player == null)
+        {
+            return;
+        }
+
+        foreach (Transform child in transform)
+        {
+            Card cardObj = child.GetComponent<Card>();
+            SpriteRenderer sr = child.GetComponent<SpriteRenderer>();
+
+            if (cardObj == null || sr == null) continue;
+
+            if (!player.IsMyTurn)
+            {
+                sr.color = Color.white;
+                continue;
+            }
+
+            bool isLegal = UnoGameManager.Instance != null
+                && UnoGameManager.Instance.IsLegalMove(player, cardObj.card);
+
+            sr.color = isLegal
+                ? Color.white
+                : new Color(0.35f, 0.35f, 0.35f, 0.6f);
+        }
     }
 
     public void Discard(CardScriptables card)

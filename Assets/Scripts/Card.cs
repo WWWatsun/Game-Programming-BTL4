@@ -6,13 +6,21 @@ public class Card : MonoBehaviour
 {
     [SerializeField] public CardScriptables card = null;
 
-    private void Start()
+    private void Start() //nhi fix null error
     {
-        SpriteRenderer spriteRenderer = GetComponent<SpriteRenderer>();
-        spriteRenderer.sprite = card.cardSprite;
+        if (card != null)
+        {
+            SpriteRenderer spriteRenderer = GetComponent<SpriteRenderer>();
+            spriteRenderer.sprite = card.cardSprite;
+        }
+
         CardClicking clicker = GetComponent<CardClicking>();
-        clicker.SetUp();
+        if (clicker != null)
+        {
+            clicker.SetUp();
+        }
     }
+
     [ContextMenu("DrawACard")]
     void DrawACard()
     {
