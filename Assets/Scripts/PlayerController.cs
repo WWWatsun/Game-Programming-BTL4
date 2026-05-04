@@ -47,8 +47,19 @@ public class PlayerController : MonoBehaviour
         UnoGameManager.Instance.TryPlayCard(this, card);
     }
 
-    public void DrawCard()
+    public CardScriptables DrawCard()// nhi chinh cach nut Draw hoat dong
     {
-        hand.DrawACard();
+        return hand.DrawOneCardToHand();
+    }
+
+    public void RequestDrawCard()// nhi chinh cach nut Draw hoat dong
+    {
+        if (!isMyTurn)
+        {
+            Debug.Log($"Player {playerIndex}: Not your turn, cannot draw.");
+            return;
+        }
+
+        UnoGameManager.Instance.TryDrawCard(this);
     }
 }

@@ -6,15 +6,22 @@ public class Card : MonoBehaviour
 {
     [SerializeField] public CardScriptables card = null;
 
-    private void Start() //nhi fix null error
+    public bool overrideSpriteByHand = false; //nhi: player0 (hardcode local) chỉ tháy bài của mình, và chỉ thấy số lượng bài của các player khác
+
+    private void Start() //nhi: player0 (hardcode local) chỉ tháy bài của mình, và chỉ thấy số lượng bài của các player khác
     {
-        if (card != null)
+        if (!overrideSpriteByHand && card != null)
         {
             SpriteRenderer spriteRenderer = GetComponent<SpriteRenderer>();
-            spriteRenderer.sprite = card.cardSprite;
+
+            if (spriteRenderer != null)
+            {
+                spriteRenderer.sprite = card.cardSprite;
+            }
         }
 
         CardClicking clicker = GetComponent<CardClicking>();
+
         if (clicker != null)
         {
             clicker.SetUp();
