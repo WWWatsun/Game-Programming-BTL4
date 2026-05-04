@@ -1,4 +1,4 @@
-public class TurnManager
+﻿public class TurnManager
 {
     private int currentPlayerIndex = 0;
     private int direction = 1;
