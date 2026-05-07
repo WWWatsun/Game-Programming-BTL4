@@ -4,6 +4,7 @@ using System.Collections.Generic;
 public class Deck : MonoBehaviour
 {
     public static Deck Instance { get; private set; }
+    public Dictionary<int, CardScriptables> CardDatabase = new Dictionary<int, CardScriptables>();
     [SerializeField] CardScriptables[] cardDeck;
 
     [SerializeField] List<CardScriptables> activeDeck = new List<CardScriptables>();
@@ -19,6 +20,17 @@ public class Deck : MonoBehaviour
             Instance = this;
         }
 
+        // 1. Safely build the Database (The Catalog)
+        foreach (CardScriptables card in cardDeck)
+        {
+            // Only add it if we haven't seen this ID yet!
+            if (!CardDatabase.ContainsKey(card.cardID))
+            {
+                CardDatabase.Add(card.cardID, card);
+            }
+        }
+
+        // 2. Build the actual playing deck
         activeDeck.AddRange(cardDeck);
         Shuffle();
     }

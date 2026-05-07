@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cc3f5193d626bf34db976389ec50f8f2, type: 3}
   m_Name: Red 5
   m_EditorClassIdentifier: Assembly-CSharp::CardScriptables
+  cardID: 33
   cardValue: 5
   cardColor: 0
   cardSprite: {fileID: 21300000, guid: ef59d9d27b1b1d042a8872c5d34c791c, type: 3}

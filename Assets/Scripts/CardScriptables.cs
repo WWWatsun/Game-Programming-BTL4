@@ -14,6 +14,7 @@ public enum CardColor // 4 colors, neutral for +4 and wild
 [CreateAssetMenu(fileName = "CardScriptables", menuName = "Scriptable Objects/CardScriptables")]
 public class CardScriptables : ScriptableObject
 {
+    public int cardID; // Unique identifier for the card
     public CardValue cardValue;
     public CardColor cardColor;
     public Sprite cardSprite; 

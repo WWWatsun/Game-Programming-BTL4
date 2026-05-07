@@ -3,11 +3,19 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
+using Unity.Netcode;
 using TMPro;
 
-public class UnoGameManager : MonoBehaviour
+public class UnoGameManager : NetworkBehaviour
 {
     public static UnoGameManager Instance { get; private set; }
+
+    [Header("Network Synced State")]
+    // Replaces your standard int/enum variables
+    public NetworkVariable<int> currentTurnIndex = new NetworkVariable<int>(0);
+    public NetworkVariable<CardColor> syncedCurrentColor = new NetworkVariable<CardColor>();
+    public NetworkVariable<int> syncedCurrentPenalty = new NetworkVariable<int>(0);
+    public NetworkVariable<int> topDiscardCardID = new NetworkVariable<int>();
 
     [Header("Players")]
     [SerializeField] private List<PlayerController> players = new List<PlayerController>();
@@ -60,33 +68,39 @@ public class UnoGameManager : MonoBehaviour
 
     private void Start()
     {
-
         // Ẩn tất cả UI lúc mới vào game
         if (panelRule0) panelRule0.SetActive(false);
         if (panelRule7) panelRule7.SetActive(false);
         if (panelRule8) panelRule8.SetActive(false);
         if (panelColorPicker) panelColorPicker.SetActive(false);
-        AutoAssignPlayersIfNeeded();
+    }
 
-        if (players.Count == 0)
+    public override void OnNetworkSpawn()
+    {
+        // Subscribe using the named methods
+        topDiscardCardID.OnValueChanged += OnTopCardChanged;
+        currentTurnIndex.OnValueChanged += OnTurnIndexChanged;
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        // Unsubscribe using the exact same named methods
+        topDiscardCardID.OnValueChanged -= OnTopCardChanged;
+        currentTurnIndex.OnValueChanged -= OnTurnIndexChanged;
+    }
+
+    private void OnTopCardChanged(int previousID, int newID)
+    {
+        // Double-check the ID exists to prevent errors during initialization
+        if (Deck.Instance.CardDatabase.ContainsKey(newID))
         {
-            Debug.LogError("No players found. Please add PlayerController objects to the scene.");
-            return;
+            CardScriptables newTopCard = Deck.Instance.CardDatabase[newID];
+            topDiscardCardDisplay.sprite = newTopCard.cardSprite;
         }
+    }
 
-        turnManager = new TurnManager(players.Count);
-
-        for (int i = 0; i < players.Count; i++)
-        {
-            players[i].Init(i);
-        }
-
-        if (dealCardsOnStart)
-        {
-            DealInitialCards();
-        }
-
-        InitTopDiscardCardIfNeeded();
+    private void OnTurnIndexChanged(int previousTurn, int newTurn)
+    {
         UpdateTurnVisuals();
     }
 
@@ -115,32 +129,29 @@ public class UnoGameManager : MonoBehaviour
 
     private void DealInitialCards()
     {
-        foreach (PlayerController player in players)
-        {
-            if (player == null || player.Hand == null)
-            {
-                Debug.LogWarning("Skip dealing card because player or hand is null.");
-                continue;
-            }
-
-            player.Hand.ClearHand();
-        }
+        // Ensure only the Host deals the cards!
+        if (!IsServer) return; 
 
         for (int cardIndex = 0; cardIndex < initialCardCount; cardIndex++)
         {
             foreach (PlayerController player in players)
             {
-                if (player == null || player.Hand == null)
-                {
-                    continue;
-                }
-
+                // Host draws the card securely
                 CardScriptables card = Deck.Instance.DrawCard();
-                player.Hand.AddCard(card);
+            
+                // Set up the target parameters so ONLY this specific player gets the message
+                ClientRpcParams rpcParams = new ClientRpcParams
+                {
+                    Send = new ClientRpcSendParams
+                    {
+                        TargetClientIds = new ulong[] { player.OwnerClientId }
+                    }
+                };
+
+                // Send the card ID over the network to that player
+                player.ReceiveCardClientRpc(card.cardID, rpcParams);
             }
         }
-
-        Debug.Log($"Dealt {initialCardCount} cards to each player.");
     }
 
     private void InitTopDiscardCardIfNeeded()
@@ -170,9 +181,8 @@ public class UnoGameManager : MonoBehaviour
     public bool IsLegalMove(PlayerController player, CardScriptables card)
     {
         if (player == null || card == null) return false;
-        if (turnManager == null) return false;
 
-        if (player.PlayerIndex != turnManager.CurrentPlayerIndex)
+        if (!player.IsMyTurn)
         {
             return false;
         }
@@ -188,28 +198,31 @@ public class UnoGameManager : MonoBehaviour
 
     public void TryPlayCard(PlayerController player, CardScriptables card)
     {
-        if (!IsLegalMove(player, card))
-        {
-            Debug.Log($"Illegal move: {card.CardName()}");
-            return;
-        }
+        if (!IsLegalMove(player, card)) return;
 
+        // 1. Server removes the card locally
         player.Hand.RemoveFromHandOnly(card);
         Deck.Instance.GetDiscarded(card);
 
-        topDiscardCard = card;
-        UpdateTopDiscardDisplay();
+        // NEW: 2. Server tells THAT SPECIFIC CLIENT to remove it from their screen
+        ClientRpcParams rpcParams = new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new ulong[] { player.OwnerClientId } } };
+        player.RemoveCardClientRpc(card.cardID, rpcParams);
 
-        // 1. KIỂM TRA NGƯỜI VỪA ĐÁNH CÓ HẾT BÀI CHƯA
+        // 3. Update the Top Card
+        topDiscardCard = card;
+        topDiscardCardID.Value = card.cardID; // <-- NEW: This magically updates all clients' screens!
+
         if (player.Hand.Cards.Count == 0)
         {
             Debug.Log($"Player {player.PlayerIndex} đã đánh hết bài!");
             CheckGameEndCondition(); // Gọi hàm kiểm tra kết thúc
         }
 
+        // 4. Update the Color
         if (card.cardColor != CardColor.NEUTRAL)
         {
             currentColor = card.cardColor;
+            syncedCurrentColor.Value = card.cardColor; // <-- NEW: Sync the color across the network
         }
 
         Debug.Log($"Player {player.PlayerIndex} played {card.CardName()}");
@@ -219,23 +232,16 @@ public class UnoGameManager : MonoBehaviour
         {
             if (card.cardValue == CardValue.PLUS4)
             {
-                // LÁ +4: Ghi nhận người đánh cuối cùng, cộng dồn phạt, NHƯNG CHƯA BẬT UI CHỌN MÀU
                 lastPlus4Player = player;
                 ApplyBasicCardEffect(card);
                 UpdateTurnVisuals();
+                player.PromptColorSelectionClientRpc(rpcParams);
             }
             else
             {
-                // LÁ WILD THƯỜNG: Dừng lượt, bật UI chọn màu ngay lập tức
-                ShowColorPickerUI(card);
+                pendingWildCard = card;
+                player.PromptColorSelectionClientRpc(rpcParams);
             }
-        }
-        else
-        {
-            // NẾU ĐÁNH LÁ BÌNH THƯỜNG (Hoặc +2)
-            currentColor = card.cardColor;
-            ApplyBasicCardEffect(card);
-            UpdateTurnVisuals();
         }
     }
 
@@ -272,27 +278,24 @@ public class UnoGameManager : MonoBehaviour
         Debug.Log("Waiting for player to choose a color...");
     }
 
-    // Hàm này sẽ được gọi từ các nút bấm UI
-    public void OnColorSelected(int colorIndex)
+    public void ApplyColorChoiceOnServer(int colorIndex)
     {
-        panelColorPicker.SetActive(false); // Ẩn UI chọn màu
+        // Hide UI for the host (just in case they were the one playing it)
+        panelColorPicker.SetActive(false);
 
-        // Ép kiểu (cast) int sang enum CardColor (0: RED, 1: BLUE, 2: GREEN, 3: YELLOW)
-        currentColor = (CardColor)colorIndex;
-        Debug.Log($"Color changed to: {currentColor}");
+        // Update the NetworkVariable! All clients will instantly see the color change.
+        syncedCurrentColor.Value = (CardColor)colorIndex;
+        Debug.Log($"Host verified Color changed to: {syncedCurrentColor.Value}");
 
-        // TRƯỜNG HỢP 1: Đang chọn màu cho Wild thường
         if (pendingWildCard != null)
         {
             ApplyBasicCardEffect(pendingWildCard);
             pendingWildCard = null;
             UpdateTurnVisuals();
         }
-        // TRƯỜNG HỢP 2: Đang chọn màu chốt cho chuỗi +4
         else if (lastPlus4Player != null)
         {
-            lastPlus4Player = null; // Xóa dữ liệu cũ
-            //MoveToNextActivePlayer(); // Chuyển lượt sang người tiếp theo (sau người vừa bị phạt mất lượt)
+            lastPlus4Player = null;
             UpdateTurnVisuals();
         }
     }
@@ -668,5 +671,35 @@ public class UnoGameManager : MonoBehaviour
                 validStepsTaken++; // Nếu còn bài thì mới tính là 1 bước hợp lệ
             }
         }
+    }
+
+    // Used by the local UI
+    public void OpenColorPickerUI()
+    {
+        panelColorPicker.SetActive(true);
+    }
+
+    // Link your new UI Button to this function!
+    public void OnHostClickStartMatch()
+    {
+        if (!IsServer) return; // Only the host can start the game
+
+        // 1. Dynamically find all players that have connected and spawned
+        PlayerController[] foundPlayers = FindObjectsByType<PlayerController>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+
+        players = foundPlayers.OrderBy(p => p.OwnerClientId).ToList();
+
+        // 2. Initialize their indexes
+        for (int i = 0; i < players.Count; i++)
+        {
+            players[i].Init(i);
+        }
+
+        turnManager = new TurnManager(players.Count);
+
+        // 3. Deal the cards!
+        DealInitialCards();
+        InitTopDiscardCardIfNeeded();
+        UpdateTurnVisuals();
     }
 }
